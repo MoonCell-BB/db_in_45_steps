@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bytes"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,6 +10,9 @@ import (
 
 func TestKVBasic(t *testing.T) {
 	kv := KV{}
+	kv.log.FileName = ".test_kv_basic_db"
+	defer os.Remove(kv.log.FileName)
+	_ = os.Remove(kv.log.FileName)
 
 	// Open
 	err := kv.Open()
@@ -27,7 +31,7 @@ func TestKVBasic(t *testing.T) {
 	assert.Equal(t, []byte("v1"), val)
 
 	// Get non-existing key
-	val, ok, err = kv.Get([]byte("xxx"))
+	_, ok, err = kv.Get([]byte("xxx"))
 	assert.NoError(t, err)
 	assert.False(t, ok)
 
@@ -42,13 +46,37 @@ func TestKVBasic(t *testing.T) {
 	assert.True(t, updated)
 
 	// Verify key is deleted
-	val, ok, err = kv.Get([]byte("k1"))
+	_, ok, err = kv.Get([]byte("k1"))
 	assert.NoError(t, err)
 	assert.False(t, ok)
+
+	// Set another key for persistence check
+	updated, err = kv.Set([]byte("k2"), []byte("v2"))
+	assert.NoError(t, err)
+	assert.True(t, updated)
+
+	// Reopen
+	assert.NoError(t, kv.Close())
+
+	err = kv.Open()
+	assert.NoError(t, err)
+
+	_, ok, err = kv.Get([]byte("k1"))
+	assert.NoError(t, err)
+	assert.False(t, ok)
+
+	val, ok, err = kv.Get([]byte("k2"))
+	assert.NoError(t, err)
+	assert.True(t, ok)
+	assert.Equal(t, []byte("v2"), val)
 }
 
 func TestKVUpdateValue(t *testing.T) {
 	kv := KV{}
+	kv.log.FileName = ".test_kv_update_db"
+	defer os.Remove(kv.log.FileName)
+	_ = os.Remove(kv.log.FileName)
+
 	assert.NoError(t, kv.Open())
 	defer kv.Close()
 
@@ -71,6 +99,10 @@ func TestKVUpdateValue(t *testing.T) {
 
 func TestKVSameValue(t *testing.T) {
 	kv := KV{}
+	kv.log.FileName = ".test_kv_same_db"
+	defer os.Remove(kv.log.FileName)
+	_ = os.Remove(kv.log.FileName)
+
 	assert.NoError(t, kv.Open())
 	defer kv.Close()
 
@@ -87,7 +119,7 @@ func TestKVSameValue(t *testing.T) {
 
 func TestEntryEncode(t *testing.T) {
 	ent := Entry{key: []byte("k1"), val: []byte("xxx")}
-	data := []byte{2, 0, 0, 0, 3, 0, 0, 0, 'k', '1', 'x', 'x', 'x'}
+	data := []byte{2, 0, 0, 0, 3, 0, 0, 0, 0, 'k', '1', 'x', 'x', 'x'}
 
 	// Encode
 	assert.Equal(t, data, ent.Encode())
@@ -95,6 +127,68 @@ func TestEntryEncode(t *testing.T) {
 	// Decode
 	decoded := Entry{}
 	err := decoded.Decode(bytes.NewBuffer(data))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, ent, decoded)
+
+	ent = Entry{key: []byte("k1"), deleted: true}
+	data = []byte{2, 0, 0, 0, 0, 0, 0, 0, 1, 'k', '1'}
+
+	// Encode deleted entry
+	assert.Equal(t, data, ent.Encode())
+
+	// Decode deleted entry
+	decoded = Entry{}
+	err = decoded.Decode(bytes.NewBuffer(data))
+	assert.NoError(t, err)
+	assert.Equal(t, ent, decoded)
+}
+
+func TestLogWriteRead(t *testing.T) {
+	log := Log{FileName: ".test_log_rw"}
+	defer os.Remove(log.FileName)
+	_ = os.Remove(log.FileName)
+
+	// Open and write entries
+	assert.NoError(t, log.Open())
+	assert.NoError(t, log.Write(&Entry{key: []byte("k1"), val: []byte("v1")}))
+	assert.NoError(t, log.Write(&Entry{key: []byte("k1"), deleted: true}))
+	assert.NoError(t, log.Close())
+
+	// Reopen and read first entry
+	assert.NoError(t, log.Open())
+	defer log.Close()
+
+	ent := Entry{}
+	eof, err := log.Read(&ent)
+	assert.NoError(t, err)
+	assert.False(t, eof)
+	assert.Equal(t, Entry{key: []byte("k1"), val: []byte("v1")}, ent)
+
+	// Read second entry
+	ent = Entry{}
+	eof, err = log.Read(&ent)
+	assert.NoError(t, err)
+	assert.False(t, eof)
+	assert.Equal(t, Entry{key: []byte("k1"), deleted: true}, ent)
+
+	// Read EOF
+	ent = Entry{}
+	eof, err = log.Read(&ent)
+	assert.NoError(t, err)
+	assert.True(t, eof)
+}
+
+func TestLogReadEOF(t *testing.T) {
+	log := Log{FileName: ".test_log_eof"}
+	defer os.Remove(log.FileName)
+	_ = os.Remove(log.FileName)
+
+	assert.NoError(t, log.Open())
+	defer log.Close()
+
+	// Empty log should return EOF directly
+	ent := Entry{}
+	eof, err := log.Read(&ent)
+	assert.NoError(t, err)
+	assert.True(t, eof)
 }
