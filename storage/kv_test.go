@@ -119,7 +119,7 @@ func TestKVSameValue(t *testing.T) {
 
 func TestEntryEncode(t *testing.T) {
 	ent := Entry{key: []byte("k1"), val: []byte("xxx")}
-	data := []byte{2, 0, 0, 0, 3, 0, 0, 0, 0, 'k', '1', 'x', 'x', 'x'}
+	data := []byte{0xe9, 0xec, 0x4d, 0x9e, 2, 0, 0, 0, 3, 0, 0, 0, 0, 'k', '1', 'x', 'x', 'x'}
 
 	// Encode
 	assert.Equal(t, data, ent.Encode())
@@ -131,7 +131,7 @@ func TestEntryEncode(t *testing.T) {
 	assert.Equal(t, ent, decoded)
 
 	ent = Entry{key: []byte("k1"), deleted: true}
-	data = []byte{2, 0, 0, 0, 0, 0, 0, 0, 1, 'k', '1'}
+	data = []byte{0x4c, 0xd0, 0xfe, 0xe5, 2, 0, 0, 0, 0, 0, 0, 0, 1, 'k', '1'}
 
 	// Encode deleted entry
 	assert.Equal(t, data, ent.Encode())
