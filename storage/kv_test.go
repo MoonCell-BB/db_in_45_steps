@@ -192,3 +192,35 @@ func TestLogReadEOF(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, eof)
 }
+
+func TestKVUpdateMode(t *testing.T) {
+	kv := KV{}
+	kv.log.FileName = ".test_db_update_mode"
+	defer os.Remove(kv.log.FileName)
+
+	os.Remove(kv.log.FileName)
+	err := kv.Open()
+	assert.Nil(t, err)
+	defer kv.Close()
+
+	updated, err := kv.SetEx([]byte("k1"), []byte("v1"), ModeUpdate)
+	assert.True(t, !updated && err == nil)
+
+	updated, err = kv.SetEx([]byte("k1"), []byte("v1"), ModeUpdate)
+	assert.True(t, !updated && err == nil)
+
+	updated, err = kv.SetEx([]byte("k1"), []byte("v1"), ModeInsert)
+	assert.True(t, updated && err == nil)
+
+	updated, err = kv.SetEx([]byte("k1"), []byte("xx"), ModeInsert)
+	assert.True(t, !updated && err == nil)
+
+	updated, err = kv.SetEx([]byte("k1"), []byte("yy"), ModeUpdate)
+	assert.True(t, updated && err == nil)
+
+	updated, err = kv.SetEx([]byte("k1"), []byte("zz"), ModeUpsert)
+	assert.True(t, updated && err == nil)
+
+	updated, err = kv.SetEx([]byte("k2"), []byte("tt"), ModeUpsert)
+	assert.True(t, updated && err == nil)
+}

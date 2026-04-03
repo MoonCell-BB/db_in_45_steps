@@ -1,6 +1,16 @@
 package storage
 
-import "bytes"
+import (
+	"bytes"
+)
+
+type UpdateMode int
+
+const (
+	ModeUpsert UpdateMode = 0 // insert or update
+	ModeInsert UpdateMode = 1 // insert new
+	ModeUpdate UpdateMode = 2 // update existing
+)
 
 type KV struct {
 	log Log
@@ -41,15 +51,26 @@ func (kv *KV) Get(key []byte) (val []byte, ok bool, err error) {
 }
 
 func (kv *KV) Set(key []byte, val []byte) (updated bool, err error) {
+	return kv.SetEx(key, val, ModeUpsert)
+}
+
+func (kv *KV) SetEx(key []byte, val []byte, mode UpdateMode) (updated bool, err error) {
 	prev, exist := kv.mem[string(key)]
-	updated = !exist || !bytes.Equal(prev, val)
+	switch mode {
+	case ModeUpsert:
+		updated = !exist || !bytes.Equal(prev, val)
+	case ModeInsert:
+		updated = !exist
+	case ModeUpdate:
+		updated = exist && !bytes.Equal(prev, val)
+	default:
+		panic("update mode mismatch")
+	}
 
 	if updated {
-		ent := &Entry{key: key, val: val}
-		if err = kv.log.Write(ent); err != nil {
+		if err = kv.log.Write(&Entry{key: key, val: val}); err != nil {
 			return false, err
 		}
-
 		kv.mem[string(key)] = val
 	}
 
