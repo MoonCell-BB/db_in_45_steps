@@ -45,6 +45,14 @@ func (kv *KV) Close() error {
 	return kv.log.Close()
 }
 
+func (kv *KV) Init(path string) error {
+	kv.log = Log{
+		FileName: path,
+	}
+
+	return kv.Open()
+}
+
 func (kv *KV) Get(key []byte) (val []byte, ok bool, err error) {
 	val, ok = kv.mem[string(key)]
 	return
