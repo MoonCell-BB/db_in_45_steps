@@ -3,6 +3,7 @@ package parser
 import (
 	"testing"
 
+	"github.com/mooncell-bb/db_in_45_steps/database"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -177,6 +178,21 @@ func TestParsePunctuationVariations(t *testing.T) {
 		assert.True(t, p.tryPunctuation(punct), "Failed to parse punctuation: %s", punct)
 		assert.True(t, p.isEnd())
 	}
+}
+
+func testParseValue(t *testing.T, s string, ref database.Cell) {
+	p := NewParser(s)
+	out := database.Cell{}
+	err := p.parseValue(&out)
+	assert.Nil(t, err)
+	assert.True(t, p.isEnd())
+	assert.Equal(t, ref, out)
+}
+
+func TestParseValue(t *testing.T) {
+	testParseValue(t, " -123 ", database.Cell{Type: database.TypeI64, I64: -123})
+	testParseValue(t, ` 'abc\'\"d' `, database.Cell{Type: database.TypeStr, Str: []byte("abc'\"d")})
+	testParseValue(t, ` "abc\'\"d" `, database.Cell{Type: database.TypeStr, Str: []byte("abc'\"d")})
 }
 
 func TestParserCombined(t *testing.T) {

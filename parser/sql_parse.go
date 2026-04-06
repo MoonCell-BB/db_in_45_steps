@@ -1,6 +1,13 @@
 package parser
 
-import "strings"
+import (
+	"bytes"
+	"errors"
+	"strconv"
+	"strings"
+
+	"github.com/mooncell-bb/db_in_45_steps/database"
+)
 
 type Parser struct {
 	buf string
@@ -81,6 +88,76 @@ func (p *Parser) tryPunctuation(tok string) bool {
 	}
 
 	p.pos += len(tok)
-	
+
 	return true
+}
+
+func (p *Parser) parseValue(out *database.Cell) error {
+	if p.isEnd() {
+		return errors.New("expect value")
+	}
+
+	ch := p.buf[p.pos]
+	if ch == '"' || ch == '\'' {
+		return p.parseString(out)
+	} else if IsDigit(ch) || ch == '-' || ch == '+' {
+		return p.parseInt(out)
+	} else {
+		return errors.New("expect value")
+	}
+}
+
+func (p *Parser) parseInt(out *database.Cell) error {
+	end := p.pos
+
+	if p.buf[end] == '-' || p.buf[end] == '+' {
+		end++
+	}
+
+	for end < len(p.buf) && IsDigit(p.buf[end]) {
+		end++
+	}
+
+	num, err := strconv.ParseInt(p.buf[p.pos:end], 10, 64)
+	if err != nil {
+		return err
+	}
+
+	out.Type = database.TypeI64
+	out.I64 = num
+	p.pos = end
+
+	return nil
+}
+
+func (p *Parser) parseString(out *database.Cell) error {
+	match := p.buf[p.pos]
+
+	var str bytes.Buffer
+	str.Grow(64)
+
+	end := p.pos + 1
+	for end < len(p.buf) {
+		ch := p.buf[end]
+		switch ch {
+		case '\\':
+			end++
+			if end < len(p.buf) && (p.buf[end] == '"' || p.buf[end] == '\'') {
+				str.WriteByte(p.buf[end])
+				end++
+			} else {
+				return errors.New("bad escape")
+			}
+		case match:
+			out.Type = database.TypeStr
+			out.Str = str.Bytes()
+			p.pos = end + 1
+			return nil
+		default:
+			str.WriteByte(ch)
+			end++
+		}
+	}
+
+	return errors.New("string is not terminated")
 }
