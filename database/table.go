@@ -90,23 +90,50 @@ func (db *DB) GetSchema(table string) (Schema, error) {
 
 type RowIterator struct {
 	schema *Schema
-	iter   *storage.KVIterator
+	iter   *storage.RangedKVIter
 	valid  bool
 	row    Row
 }
 
 func (db *DB) Seek(schema *Schema, row Row) (*RowIterator, error) {
-	iter, err := db.KV.Seek(row.EncodeKey(schema))
+	start := make([]Cell, len(schema.PKey))
+	for i, idx := range schema.PKey {
+		if row[idx].Type != schema.Cols[idx].Type {
+			panic("cell type mismatch")
+		}
+
+		start[i] = row[idx]
+	}
+
+	return db.Range(schema, &RangeReq{
+		StartCmp: OP_GE,
+		StopCmp:  OP_LE,
+		Start:    start,
+		Stop:     nil,
+	})
+}
+
+func (db *DB) Range(schema *Schema, req *RangeReq) (*RowIterator, error) {
+	startDescending, stopDescending := IsDescending(req.StartCmp), IsDescending(req.StopCmp)
+	if startDescending == stopDescending {
+		panic("operator conflict")
+	}
+
+	start := EncodeKeyPrefix(schema, req.Start, SuffixPositive(req.StartCmp))
+	stop := EncodeKeyPrefix(schema, req.Stop, SuffixPositive(req.StopCmp))
+
+	iter, err := db.KV.Range(start, stop, startDescending)
 	if err != nil {
 		return nil, err
 	}
 
+	row := schema.NewRow()
 	valid, err := decodeKVIter(schema, iter, row)
 	if err != nil {
 		return nil, err
 	}
 
-	return &RowIterator{schema, iter, valid, row}, nil
+	return &RowIterator{schema: schema, iter: iter, valid: valid, row: row}, nil
 }
 
 func (iter *RowIterator) Next() (err error) {
@@ -126,7 +153,7 @@ func (iter *RowIterator) Row() Row {
 	return iter.row
 }
 
-func decodeKVIter(schema *Schema, iter *storage.KVIterator, row Row) (bool, error) {
+func decodeKVIter(schema *Schema, iter *storage.RangedKVIter, row Row) (bool, error) {
 	if !iter.Valid() {
 		return false, nil
 	}

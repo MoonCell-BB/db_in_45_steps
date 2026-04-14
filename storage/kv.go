@@ -126,7 +126,6 @@ func (kv *KV) Seek(key []byte) (*KVIterator, error) {
 	pos, _ := slices.BinarySearchFunc(kv.Keys, key, bytes.Compare)
 
 	return &KVIterator{keys: kv.Keys, vals: kv.Vals, pos: pos}, nil
-
 }
 
 func (iter *KVIterator) Valid() bool {
@@ -163,4 +162,68 @@ func (iter *KVIterator) Prev() error {
 	}
 
 	return nil
+}
+
+type RangedKVIter struct {
+	iter KVIterator
+	stop []byte
+	desc bool
+}
+
+func (kv *KV) Range(start, stop []byte, desc bool) (*RangedKVIter, error) {
+	iter, err := kv.Seek(start)
+	if err != nil {
+		return nil, err
+	}
+
+	if desc && (!iter.Valid() || bytes.Compare(iter.Key(), start) > 0) {
+		if err = iter.Prev(); err != nil {
+			return nil, err
+		}
+	}
+
+	return &RangedKVIter{iter: *iter, stop: stop, desc: desc}, nil
+}
+
+func (iter *RangedKVIter) Valid() bool {
+	if !iter.iter.Valid() {
+		return false
+	}
+
+	r := bytes.Compare(iter.iter.Key(), iter.stop)
+	if iter.desc && r < 0 {
+		return false
+	} else if !iter.desc && r > 0 {
+		return false
+	}
+
+	return true
+}
+
+func (iter *RangedKVIter) Key() []byte {
+	if iter.Valid() {
+		return iter.iter.Key()
+	}
+
+	return nil
+}
+
+func (iter *RangedKVIter) Val() []byte {
+	if iter.Valid() {
+		return iter.iter.Val()
+	}
+
+	return nil
+}
+
+func (iter *RangedKVIter) Next() error {
+	if !iter.Valid() {
+		return nil
+	}
+
+	if iter.desc {
+		return iter.iter.Prev()
+	} else {
+		return iter.iter.Next()
+	}
 }

@@ -35,10 +35,11 @@ func (row Row) EncodeKey(schema *Schema) (key []byte) {
 			panic("cell type mismatch")
 		}
 
+		key = append(key, byte(cell.Type))
 		key = cell.EncodeKey(key)
 	}
 
-	return key
+	return append(key, 0x00)
 }
 
 func (row Row) EncodeVal(schema *Schema) (val []byte) {
@@ -84,6 +85,15 @@ func (row Row) DecodeKey(schema *Schema, key []byte) (err error) {
 
 	for _, idx := range schema.PKey {
 		col := schema.Cols[idx]
+		if len(key) == 0 {
+			return ErrDataLen
+		}
+		
+		if CellType(key[0]) != col.Type {
+			return errors.New("cell type mismatch")
+		}
+		key = key[1:]
+
 		row[idx] = Cell{Type: col.Type}
 
 		if key, err = row[idx].DecodeKey(key); err != nil {
@@ -91,7 +101,7 @@ func (row Row) DecodeKey(schema *Schema, key []byte) (err error) {
 		}
 	}
 
-	if len(key) != 0 {
+	if len(key) != 1 || key[0] != 0x00 {
 		return errors.New("trailing garbage")
 	}
 
@@ -120,4 +130,26 @@ func (row Row) DecodeVal(schema *Schema, val []byte) (err error) {
 	}
 
 	return nil
+}
+
+func EncodeKeyPrefix(schema *Schema, prefix []Cell, positive bool) []byte {
+	if len(prefix) > len(schema.PKey) {
+		panic("mismatch between key prefix and schema")
+	}
+
+	key := append([]byte(schema.Table), 0x00)
+	for idx, cell := range prefix {
+		if cell.Type != schema.Cols[schema.PKey[idx]].Type {
+			panic("cell type mismatch")
+		}
+
+		key = append(key, byte(cell.Type))
+		key = cell.EncodeKey(key)
+	}
+
+	if positive {
+		key = append(key, 0xff)
+	}
+
+	return key
 }
