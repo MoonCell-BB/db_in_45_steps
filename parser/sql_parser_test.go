@@ -361,7 +361,7 @@ func TestParseStmt(t *testing.T) {
 
 func testParseExpr(t *testing.T, s string, expr any) {
 	p := NewParser(s)
-	out, err := p.parseAdd()
+	out, err := p.ParseExpr()
 	require.Nil(t, err)
 	assert.Equal(t, expr, out)
 	assert.True(t, p.isEnd())
@@ -371,6 +371,7 @@ func TestParseExpr(t *testing.T) {
 	var expr any
 
 	testParseExpr(t, "a", "a")
+	testParseExpr(t, "(a)", "a")
 	testParseExpr(t, "1", &database.Cell{Type: database.TypeI64, I64: 1})
 
 	s := "a + 1"
@@ -381,6 +382,24 @@ func TestParseExpr(t *testing.T) {
 	expr = &ExprBinOp{op: database.OP_SUB,
 		left:  &ExprBinOp{op: database.OP_ADD, left: "a", right: &database.Cell{Type: database.TypeI64, I64: 1}},
 		right: "b",
+	}
+	testParseExpr(t, s, expr)
+
+	s = "a + b * c"
+	expr = &ExprBinOp{op: database.OP_ADD,
+		left:  "a",
+		right: &ExprBinOp{op: database.OP_MUL, left: "b", right: "c"},
+	}
+	testParseExpr(t, s, expr)
+
+	s = "(a * b)"
+	expr = &ExprBinOp{op: database.OP_MUL, left: "a", right: "b"}
+	testParseExpr(t, s, expr)
+
+	s = "(a + b) / c"
+	expr = &ExprBinOp{op: database.OP_DIV,
+		left:  &ExprBinOp{op: database.OP_ADD, left: "a", right: "b"},
+		right: "c",
 	}
 	testParseExpr(t, s, expr)
 }

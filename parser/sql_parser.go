@@ -465,7 +465,19 @@ func (p *Parser) parseCreateTable(out *StmtCreatTable) error {
 	return nil
 }
 
-func (p *Parser) parseAtom() (any, error) {
+func (p *Parser) parseAtom() (expr any, err error) {
+	if p.tryPunctuation("(") {
+		if expr, err = p.ParseExpr(); err != nil {
+			return nil, err
+		}
+
+		if !p.tryPunctuation(")") {
+			return nil, errors.New("expect )")
+		}
+
+		return expr, nil
+	}
+
 	if name, ok := p.tryName(); ok {
 		return name, nil
 	}
@@ -479,13 +491,48 @@ func (p *Parser) parseAtom() (any, error) {
 }
 
 func (p *Parser) parseAdd() (any, error) {
-	left, err := p.parseAtom()
+	left, err := p.parseMul()
 	if err != nil {
 		return nil, err
 	}
 
 	tokens := []string{"+", "-"}
 	ops := []database.ExprOp{database.OP_ADD, database.OP_SUB}
+
+	for ok := true; ok; {
+		ok = false
+		for idx, token := range tokens {
+			if !p.tryPunctuation(token) {
+				continue
+			}
+
+			ok = true
+			right, err := p.parseMul()
+			if err != nil {
+				return nil, err
+			}
+
+			left = &ExprBinOp{
+				op:    ops[idx],
+				left:  left,
+				right: right,
+			}
+
+			break
+		}
+	}
+
+	return left, nil
+}
+
+func (p *Parser) parseMul() (any, error) {
+	left, err := p.parseAtom()
+	if err != nil {
+		return nil, err
+	}
+
+	tokens := []string{"*", "/"}
+	ops := []database.ExprOp{database.OP_MUL, database.OP_DIV}
 
 	for ok := true; ok; {
 		ok = false
@@ -511,4 +558,8 @@ func (p *Parser) parseAdd() (any, error) {
 	}
 
 	return left, nil
+}
+
+func (p *Parser) ParseExpr() (any, error) {
+	return p.parseAdd()
 }
